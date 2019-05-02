@@ -62,6 +62,7 @@ const (
 )
 
 type IPTables struct {
+	netns          string
 	path           string
 	proto          Protocol
 	hasCheck       bool
@@ -75,13 +76,13 @@ type IPTables struct {
 
 // New creates a new IPTables.
 // For backwards compatibility, this always uses IPv4, i.e. "iptables".
-func New() (*IPTables, error) {
-	return NewWithProtocol(ProtocolIPv4)
+func New(ns string) (*IPTables, error) {
+	return NewWithProtocol(ProtocolIPv4, ns)
 }
 
 // New creates a new IPTables for the given proto.
 // The proto will determine which command is used, either "iptables" or "ip6tables".
-func NewWithProtocol(proto Protocol) (*IPTables, error) {
+func NewWithProtocol(proto Protocol, netns string) (*IPTables, error) {
 	path, err := exec.LookPath(getIptablesCommand(proto))
 	if err != nil {
 		return nil, err
@@ -101,6 +102,7 @@ func NewWithProtocol(proto Protocol) (*IPTables, error) {
 		v2:             v2,
 		v3:             v3,
 		mode:           mode,
+		netns:			netns,
 	}
 	return &ipt, nil
 }
@@ -376,9 +378,16 @@ func (ipt *IPTables) runWithOutput(args []string, stdout io.Writer) error {
 		defer ul.Unlock()
 	}
 
+	path := ipt.path
+	if ipt.netns != "" {
+		path = "/sbin/ip"
+		prefix := []string{"ip", "netns", "exec", ipt.netns}
+		args = append(prefix, args...)
+	}
+
 	var stderr bytes.Buffer
 	cmd := exec.Cmd{
-		Path:   ipt.path,
+		Path:   path,
 		Args:   args,
 		Stdout: stdout,
 		Stderr: &stderr,
